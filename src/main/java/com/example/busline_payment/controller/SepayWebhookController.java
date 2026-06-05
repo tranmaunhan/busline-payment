@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 @RestController
 public class SepayWebhookController {
 
@@ -27,14 +29,37 @@ public class SepayWebhookController {
 	public ResponseEntity<WebhookResponse> handleWebhook(
 			@RequestBody(required = false) byte[] rawBody,
 			@RequestHeader(name = "x-sepay-signature", required = false) String signature,
-			@RequestHeader(name = "x-sepay-timestamp", required = false) String timestampHeader
+			@RequestHeader(name = "x-sepay-timestamp", required = false) String timestampHeader,
+			HttpServletRequest request
 	) {
+		long parsedTimestamp = parseTimestamp(timestampHeader);
+		LOGGER.info(
+				"SePay webhook received: method={}, path={}, clientIp={}, forwardedFor={}, hasSignature={}, timestamp={}, bodyBytes={}",
+				request.getMethod(),
+				request.getRequestURI(),
+				request.getRemoteAddr(),
+				request.getHeader("X-Forwarded-For"),
+				signature != null && !signature.isBlank(),
+				parsedTimestamp,
+				rawBody == null ? 0 : rawBody.length
+		);
+
 		try {
 			WebhookHandlingResult result = sepayWebhookService.handleWebhook(
 					rawBody,
 					signature,
-					parseTimestamp(timestampHeader)
+					parsedTimestamp
 			);
+			if (result.status().is2xxSuccessful()) {
+				LOGGER.info("SePay webhook handled successfully: status={}", result.status().value());
+			}
+			else {
+				LOGGER.warn(
+						"SePay webhook handled with non-success status: status={}, message={}",
+						result.status().value(),
+						result.response().message()
+				);
+			}
 			return ResponseEntity.status(result.status()).body(result.response());
 		}
 		catch (Exception exception) {
