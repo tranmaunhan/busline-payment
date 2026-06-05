@@ -52,7 +52,7 @@ jobs:
               --name busline-payment \
               --network busline-network \
               --restart always \
-              -p 9090:9090 \
+              -p 9090:3000 \
               -e SPRING_DATASOURCE_URL=${{ secrets.DB_URL }} \
               -e SPRING_DATASOURCE_USERNAME=${{ secrets.DB_USERNAME }} \
               -e SPRING_DATASOURCE_PASSWORD=${{ secrets.DB_PASSWORD }} \
