@@ -13,14 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
-import java.util.HexFormat;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,8 +33,7 @@ public class SepayWebhookService {
 			TransactionRepository transactionRepository,
 			BookingRepository bookingRepository,
 			SepayWebhookProperties properties,
-			ObjectMapper objectMapper
-	) {
+			ObjectMapper objectMapper) {
 		this.transactionRepository = transactionRepository;
 		this.bookingRepository = bookingRepository;
 		this.properties = properties;
@@ -49,25 +41,10 @@ public class SepayWebhookService {
 	}
 
 	@Transactional
-	public WebhookHandlingResult handleWebhook(byte[] rawBody, String signature, long timestamp) {
+	public WebhookHandlingResult handleWebhook(byte[] rawBody) {
 		String body = rawBody == null ? "" : new String(rawBody, StandardCharsets.UTF_8);
 		if (!StringUtils.hasText(body)) {
 			return new WebhookHandlingResult(HttpStatus.BAD_REQUEST, WebhookResponse.error("Empty body"));
-		}
-
-		if (!StringUtils.hasText(properties.getSecret())) {
-			return new WebhookHandlingResult(
-					HttpStatus.INTERNAL_SERVER_ERROR,
-					WebhookResponse.error("Webhook secret is not configured")
-			);
-		}
-
-		if (isExpired(timestamp)) {
-			return new WebhookHandlingResult(HttpStatus.UNAUTHORIZED, WebhookResponse.error("Request expired"));
-		}
-
-		if (!hasValidSignature(signature, timestamp, body)) {
-			return new WebhookHandlingResult(HttpStatus.UNAUTHORIZED, WebhookResponse.error("Invalid signature"));
 		}
 
 		SepayWebhookPayload payload = parsePayload(body);
@@ -87,8 +64,7 @@ public class SepayWebhookService {
 						bookingId,
 						properties.getPendingBookingStatus(),
 						properties.getPaidBookingStatus(),
-						payload.transferAmount() == null ? 0L : payload.transferAmount()
-				);
+						payload.transferAmount() == null ? 0L : payload.transferAmount());
 			}
 		}
 
@@ -112,22 +88,9 @@ public class SepayWebhookService {
 	private SepayWebhookPayload parsePayload(String body) {
 		try {
 			return objectMapper.readValue(body, SepayWebhookPayload.class);
-		}
-		catch (JsonProcessingException exception) {
+		} catch (JsonProcessingException exception) {
 			return null;
 		}
-	}
-
-	private boolean isExpired(long timestamp) {
-		long now = Instant.now().getEpochSecond();
-		return Math.abs(now - timestamp) > properties.getAllowedClockSkewSeconds();
-	}
-
-	private boolean hasValidSignature(String signature, long timestamp, String body) {
-		String expected = "sha256=" + signPayload(properties.getSecret(), timestamp + "." + body);
-		byte[] actualBytes = signature == null ? new byte[0] : signature.getBytes(StandardCharsets.UTF_8);
-		byte[] expectedBytes = expected.getBytes(StandardCharsets.UTF_8);
-		return actualBytes.length == expectedBytes.length && MessageDigest.isEqual(actualBytes, expectedBytes);
 	}
 
 	private Integer extractBookingId(String value) {
@@ -160,20 +123,8 @@ public class SepayWebhookService {
 	private Integer parseBookingId(String rawBookingId) {
 		try {
 			return Integer.valueOf(rawBookingId);
-		}
-		catch (NumberFormatException exception) {
+		} catch (NumberFormatException exception) {
 			return null;
-		}
-	}
-
-	private String signPayload(String secret, String payload) {
-		try {
-			Mac mac = Mac.getInstance("HmacSHA256");
-			mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-			return HexFormat.of().formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
-		}
-		catch (NoSuchAlgorithmException | InvalidKeyException exception) {
-			throw new IllegalStateException("Unable to calculate SePay HMAC signature", exception);
 		}
 	}
 

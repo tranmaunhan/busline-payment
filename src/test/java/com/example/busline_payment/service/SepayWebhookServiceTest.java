@@ -12,13 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
-import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -57,18 +51,14 @@ class SepayWebhookServiceTest {
 	}
 
 	@Test
-	void rejectsInvalidSignature() {
+	void rejectsInvalidPayload() {
 		String body = """
-			{"id":"txn-1","transferType":"in","transferAmount":1000,"code":"ORDER-1"}
+			{}
 			""";
 
-		WebhookHandlingResult result = service.handleWebhook(
-				body.getBytes(StandardCharsets.UTF_8),
-				"sha256=invalid",
-				Instant.now().getEpochSecond()
-		);
+		WebhookHandlingResult result = service.handleWebhook(body.getBytes(StandardCharsets.UTF_8));
 
-		assertEquals(HttpStatus.UNAUTHORIZED, result.status());
+		assertEquals(HttpStatus.BAD_REQUEST, result.status());
 		assertEquals(false, result.response().success());
 		verify(transactionRepository, never()).insertIfAbsent(any(), anyString());
 	}
@@ -78,14 +68,9 @@ class SepayWebhookServiceTest {
 		String body = """
 			{"id":"txn-2","transferType":"in","transferAmount":1500,"code":"BOOKING-2"}
 			""";
-		long timestamp = Instant.now().getEpochSecond();
 		when(transactionRepository.insertIfAbsent(any(), anyString())).thenReturn(false);
 
-		WebhookHandlingResult result = service.handleWebhook(
-				body.getBytes(StandardCharsets.UTF_8),
-				sign(body, timestamp),
-				timestamp
-		);
+		WebhookHandlingResult result = service.handleWebhook(body.getBytes(StandardCharsets.UTF_8));
 
 		assertEquals(HttpStatus.OK, result.status());
 		assertEquals(true, result.response().success());
@@ -97,14 +82,9 @@ class SepayWebhookServiceTest {
 		String body = """
 			{"id":"txn-3","transferType":"in","transferAmount":2000,"code":"BOOKING-3"}
 			""";
-		long timestamp = Instant.now().getEpochSecond();
 		when(transactionRepository.insertIfAbsent(any(), anyString())).thenReturn(true);
 
-		WebhookHandlingResult result = service.handleWebhook(
-				body.getBytes(StandardCharsets.UTF_8),
-				sign(body, timestamp),
-				timestamp
-		);
+		WebhookHandlingResult result = service.handleWebhook(body.getBytes(StandardCharsets.UTF_8));
 
 		assertEquals(HttpStatus.OK, result.status());
 		assertEquals(true, result.response().success());
@@ -116,30 +96,13 @@ class SepayWebhookServiceTest {
 		String body = """
 			{"id":"txn-4","transferType":"in","transferAmount":2500,"content":"Thanh toan cho #45"}
 			""";
-		long timestamp = Instant.now().getEpochSecond();
 		when(transactionRepository.insertIfAbsent(any(), anyString())).thenReturn(true);
 
-		WebhookHandlingResult result = service.handleWebhook(
-				body.getBytes(StandardCharsets.UTF_8),
-				sign(body, timestamp),
-				timestamp
-		);
+		WebhookHandlingResult result = service.handleWebhook(body.getBytes(StandardCharsets.UTF_8));
 
 		assertEquals(HttpStatus.OK, result.status());
 		assertEquals(true, result.response().success());
 		verify(bookingRepository).markAsPaidIfPending(45, 0, 1, 2500L);
-	}
-
-	private String sign(String body, long timestamp) {
-		try {
-			Mac mac = Mac.getInstance("HmacSHA256");
-			mac.init(new SecretKeySpec(properties.getSecret().getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-			byte[] digest = mac.doFinal((timestamp + "." + body).getBytes(StandardCharsets.UTF_8));
-			return "sha256=" + HexFormat.of().formatHex(digest);
-		}
-		catch (NoSuchAlgorithmException | InvalidKeyException exception) {
-			throw new IllegalStateException(exception);
-		}
 	}
 
 }

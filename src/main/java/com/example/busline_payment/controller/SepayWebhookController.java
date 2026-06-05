@@ -51,11 +51,7 @@ public class SepayWebhookController {
         );
 
         try {
-            WebhookHandlingResult result = sepayWebhookService.handleWebhook(
-                    rawBody,
-                    signature,
-                    parsedTimestamp
-            );
+            WebhookHandlingResult result = sepayWebhookService.handleWebhook(rawBody);
 
             if (result.status().is2xxSuccessful()) {
                 LOGGER.info(
