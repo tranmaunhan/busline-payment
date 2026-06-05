@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record SepayWebhookPayload(
-		String id,
+		Long id,
 		String gateway,
 		String transactionDate,
 		String accountNumber,

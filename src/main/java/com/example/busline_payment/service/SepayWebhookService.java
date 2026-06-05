@@ -48,9 +48,12 @@ public class SepayWebhookService {
 		}
 
 		SepayWebhookPayload payload = parsePayload(body);
-		if (payload == null || !StringUtils.hasText(payload.id())) {
-			return new WebhookHandlingResult(HttpStatus.BAD_REQUEST, WebhookResponse.error("Invalid payload"));
-		}
+        if (payload == null || payload.id() == null) {
+            return new WebhookHandlingResult(
+                    HttpStatus.BAD_REQUEST,
+                    WebhookResponse.error("Invalid payload")
+            );
+        }
 
 		boolean inserted = transactionRepository.insertIfAbsent(payload, body);
 		if (!inserted) {
