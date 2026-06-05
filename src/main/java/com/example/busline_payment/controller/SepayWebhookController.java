@@ -35,13 +35,18 @@ public class SepayWebhookController {
         long parsedTimestamp = parseTimestamp(timestampHeader);
 
         LOGGER.info(
-                "SePay webhook received: method={}, path={}, clientIp={}, forwardedFor={}, hasSignature={}, timestamp={}, bodyBytes={}",
+                "SePay webhook received: method={}, path={}, clientIp={}, forwardedFor={}, hasSignature={}, signaturePreview={}, hasTimestampHeader={}, rawTimestampHeader={}, parsedTimestamp={}, contentType={}, userAgent={}, bodyBytes={}",
                 request.getMethod(),
                 request.getRequestURI(),
                 request.getRemoteAddr(),
                 request.getHeader("X-Forwarded-For"),
                 signature != null && !signature.isBlank(),
+                maskSignature(signature),
+                timestampHeader != null && !timestampHeader.isBlank(),
+                timestampHeader,
                 parsedTimestamp,
+                request.getContentType(),
+                request.getHeader("User-Agent"),
                 rawBody == null ? 0 : rawBody.length
         );
 
@@ -90,5 +95,17 @@ public class SepayWebhookController {
             LOGGER.warn("Invalid SePay timestamp header: {}", timestampHeader);
             return 0L;
         }
+    }
+
+    private String maskSignature(String signature) {
+        if (signature == null || signature.isBlank()) {
+            return "missing";
+        }
+
+        if (signature.length() <= 16) {
+            return signature;
+        }
+
+        return signature.substring(0, 12) + "...";
     }
 }
