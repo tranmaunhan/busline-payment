@@ -3,6 +3,8 @@ package com.example.busline_payment.repository;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public class BookingRepository {
 
@@ -12,6 +14,12 @@ public class BookingRepository {
         WHERE "BookingCode" = ?
           AND "Status" = ?
           AND "TotalAmount" = ?
+        """;
+    private static final String FIND_STATUS_BY_BOOKING_CODE_SQL = """
+        SELECT "Status"
+        FROM "Bookings"
+        WHERE UPPER("BookingCode") = UPPER(?)
+        LIMIT 1
         """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -33,5 +41,15 @@ public class BookingRepository {
                 pendingStatus,
                 transferAmount
         );
+    }
+
+    public Optional<Integer> findStatusByBookingCode(String bookingCode) {
+        return jdbcTemplate.query(
+                        FIND_STATUS_BY_BOOKING_CODE_SQL,
+                        (rs, rowNum) -> rs.getInt("Status"),
+                        bookingCode
+                )
+                .stream()
+                .findFirst();
     }
 }
