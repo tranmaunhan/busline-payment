@@ -20,9 +20,7 @@ import java.util.regex.Pattern;
 @Service
 public class SepayWebhookService {
 
-	private static final Pattern LABELED_BOOKING_ID_PATTERN = Pattern.compile("(?i)booking\\s*[-_:#= ]*\\s*(\\d+)");
-	private static final Pattern HASH_BOOKING_ID_PATTERN = Pattern.compile("#(\\d+)");
-	private static final Pattern DIGITS_ONLY_PATTERN = Pattern.compile("^\\d+$");
+	private static final Pattern BOOKING_CODE_PATTERN = Pattern.compile("(?i)(SAIGONSTBK[A-Z0-9]+)");
 
 	private final TransactionRepository transactionRepository;
 	private final BookingRepository bookingRepository;
@@ -42,50 +40,63 @@ public class SepayWebhookService {
 
 	@Transactional
 	public WebhookHandlingResult handleWebhook(byte[] rawBody) {
-		String body = rawBody == null ? "" : new String(rawBody, StandardCharsets.UTF_8);
+		String body = rawBody == null
+				? ""
+				: new String(rawBody, StandardCharsets.UTF_8);
+
 		if (!StringUtils.hasText(body)) {
-			return new WebhookHandlingResult(HttpStatus.BAD_REQUEST, WebhookResponse.error("Empty body"));
+			return new WebhookHandlingResult(
+					HttpStatus.BAD_REQUEST,
+					WebhookResponse.error("Empty body"));
 		}
 
 		SepayWebhookPayload payload = parsePayload(body);
-        if (payload == null || payload.id() == null) {
-            return new WebhookHandlingResult(
-                    HttpStatus.BAD_REQUEST,
-                    WebhookResponse.error("Invalid payload")
-            );
-        }
+
+		if (payload == null || payload.id() == null) {
+			return new WebhookHandlingResult(
+					HttpStatus.BAD_REQUEST,
+					WebhookResponse.error("Invalid payload"));
+		}
 
 		boolean inserted = transactionRepository.insertIfAbsent(payload, body);
+
 		if (!inserted) {
-			return new WebhookHandlingResult(HttpStatus.OK, WebhookResponse.ok());
+			return new WebhookHandlingResult(
+					HttpStatus.OK,
+					WebhookResponse.ok());
 		}
 
-		if ("in".equalsIgnoreCase(payload.transferType())) {
-			Integer bookingId = extractBookingId(payload);
-			if (bookingId != null) {
-				bookingRepository.markAsPaidIfPending(
-						bookingId,
-						properties.getPendingBookingStatus(),
-						properties.getPaidBookingStatus(),
-						payload.transferAmount() == null ? 0L : payload.transferAmount());
-			}
+		if (!"in".equalsIgnoreCase(payload.transferType())) {
+			return new WebhookHandlingResult(
+					HttpStatus.OK,
+					WebhookResponse.ok());
 		}
 
-		return new WebhookHandlingResult(HttpStatus.OK, WebhookResponse.ok());
-	}
+		String bookingCode = extractBookingCode(payload);
 
-	private Integer extractBookingId(SepayWebhookPayload payload) {
-		Integer fromCode = extractBookingId(payload.code());
-		if (fromCode != null) {
-			return fromCode;
+		if (!StringUtils.hasText(bookingCode)) {
+			return new WebhookHandlingResult(
+					HttpStatus.OK,
+					WebhookResponse.ok());
 		}
 
-		Integer fromReferenceCode = extractBookingId(payload.referenceCode());
-		if (fromReferenceCode != null) {
-			return fromReferenceCode;
-		}
+		long transferAmount = payload.transferAmount() == null
+				? 0L
+				: payload.transferAmount();
 
-		return extractBookingId(payload.content());
+		int updatedRows = bookingRepository.markAsPaidByBookingCodeIfPending(
+				bookingCode,
+				properties.getPendingBookingStatus(),
+				properties.getPaidBookingStatus(),
+				transferAmount);
+
+		System.out.println("Webhook matched bookingCode = " + bookingCode
+				+ ", amount = " + transferAmount
+				+ ", updatedRows = " + updatedRows);
+
+		return new WebhookHandlingResult(
+				HttpStatus.OK,
+				WebhookResponse.ok());
 	}
 
 	private SepayWebhookPayload parsePayload(String body) {
@@ -96,39 +107,31 @@ public class SepayWebhookService {
 		}
 	}
 
-	private Integer extractBookingId(String value) {
+	private String extractBookingCode(SepayWebhookPayload payload) {
+		String fromCode = extractBookingCode(payload.code());
+		if (StringUtils.hasText(fromCode)) {
+			return fromCode;
+		}
+
+		String fromReferenceCode = extractBookingCode(payload.referenceCode());
+		if (StringUtils.hasText(fromReferenceCode)) {
+			return fromReferenceCode;
+		}
+
+		return extractBookingCode(payload.content());
+	}
+
+	private String extractBookingCode(String value) {
 		if (!StringUtils.hasText(value)) {
 			return null;
 		}
 
-		String normalized = value.trim();
-		if (DIGITS_ONLY_PATTERN.matcher(normalized).matches()) {
-			return parseBookingId(normalized);
-		}
+		Matcher matcher = BOOKING_CODE_PATTERN.matcher(value);
 
-		Integer labeled = extractFirstMatch(LABELED_BOOKING_ID_PATTERN, normalized);
-		if (labeled != null) {
-			return labeled;
-		}
-
-		return extractFirstMatch(HASH_BOOKING_ID_PATTERN, normalized);
-	}
-
-	private Integer extractFirstMatch(Pattern pattern, String value) {
-		Matcher matcher = pattern.matcher(value);
 		if (!matcher.find()) {
 			return null;
 		}
 
-		return parseBookingId(matcher.group(1));
+		return matcher.group(1).toUpperCase();
 	}
-
-	private Integer parseBookingId(String rawBookingId) {
-		try {
-			return Integer.valueOf(rawBookingId);
-		} catch (NumberFormatException exception) {
-			return null;
-		}
-	}
-
 }

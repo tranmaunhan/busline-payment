@@ -11,16 +11,16 @@ import java.time.format.DateTimeFormatter;
 @Repository
 public class TransactionRepository {
 
-    private static final DateTimeFormatter SEPAY_DATE_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter SEPAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private static final String INSERT_TRANSACTION_SQL = """
-    INSERT INTO transactions
-    (sepay_id, gateway, transaction_date, account_number, sub_account,
-     code, amount_in, amount_out, accumulated, content, reference_code, body)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))
-    ON CONFLICT (sepay_id) DO NOTHING
-    """;
+            INSERT INTO transactions
+            (sepay_id, gateway, transaction_date, account_number, sub_account,
+             code, amount_in, amount_out, accumulated, content, reference_code, body)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))
+            ON CONFLICT (sepay_id) DO NOTHING
+            """;
+
     private final JdbcTemplate jdbcTemplate;
 
     public TransactionRepository(JdbcTemplate jdbcTemplate) {
@@ -47,8 +47,7 @@ public class TransactionRepository {
                 accumulated,
                 defaultString(payload.content()),
                 defaultString(payload.referenceCode()),
-                defaultString(body)
-        );
+                defaultString(body));
 
         return updatedRows > 0;
     }
@@ -59,6 +58,7 @@ public class TransactionRepository {
         }
 
         LocalDateTime localDateTime = LocalDateTime.parse(value, SEPAY_DATE_FORMATTER);
+
         return Timestamp.valueOf(localDateTime);
     }
 
